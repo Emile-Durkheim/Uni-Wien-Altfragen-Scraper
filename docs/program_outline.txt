@@ -1,0 +1,40 @@
+1. Window class with:
+    1.1 Title frame:
+        # text centered in frame, frame has a rectangular black border around it
+    1.2 File/dir entry frame:
+        # Entry object with automatic validation of entered file path
+        # "Open" button next to entry object that prompts file explorer
+        # Red error text below it if path invalid
+    1.3 Selenium/Browser frame
+        1.3.1 Radio Buttons to select Firefox or Chrome on the left side
+        1.3.2 "Browser öffnen" button that calls Selenium on the right side
+            # Greyed-out until file/dir has been specified
+            # Greys out upon pressing
+            # Checks whether Browser and Driver are installed correctly, throws up infobox if not, prints exception to large textbox
+	    # Starts a Selenium Listener that periodically checks whether Selenium is still running, raises an infobox if not
+    1.4 Large textbox that gives something akin to a log of what data has been saved
+        # Editable with window.log(str) command
+
+2. Selenium core loop as a function
+    2.1 Gets called as a seperate thread via 1.3, args: window, dict with data
+    2.2 Runs:
+	2.2.1 Opens to moodle start page
+        2.2.2 Awaits /mod/quiz in URL (URL of all tests)
+        2.2.3 While loop that keeps checking page for changes (every 0.1s)
+        2.2.4 Upon loading of new page:
+            # Compares q_num ID to entries in data struct, adds question to data struct if so
+            # Checks for changes to answers, adjusts answers in data struct if so
+            # Puts all new entries in a new = [] list and all modifications into a modified = [] list, prints both to log (1.4) via 2.3 and 2.4 at end of loop
+	2.2.5 If no q_num on new page:
+	    # Use 2.4 to say no new elements found on this page
+            # Advise on closing the browser; maybe through an infobox?
+    2.3 get_string() function that can turn dict entry into string for logbox (1.4)
+    2.4 log() function that logs all changes to the logbox (1.4) as well as a text file (only new entries go to text file tho)
+
+3. Data structure
+    3.1 Will be saved into dict of structure: {q_num: {'index': index of question,
+							'question': question text,
+							'answers': {a1 text: bool(selected),
+								    a2 text: bool(selected),
+								    ...}	}
+    3.2 Will be a global variable, so even if Selenium crashes, it can still be restarted and keep collecting just fine.
