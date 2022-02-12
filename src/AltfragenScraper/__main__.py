@@ -86,14 +86,13 @@ class Window(tk.Tk):
         self.logbox = tk.Text(frm_logbox, state='normal', wrap='word')
         self.logbox.grid(row=1, sticky='nsew')
 
-        logbox_scrollbar = ttk.Scrollbar(frm_logbox, orient='vertical', command=tk.YView)
-        self.logbox['yscrollcommand'] = logbox_scrollbar.set
+        logbox_scrollbar = ttk.Scrollbar(frm_logbox, orient='vertical', command=self.logbox.yview)
+        self.logbox.configure({'yscrollcommand': logbox_scrollbar.set})
         logbox_scrollbar.grid(column=1, row=1, sticky = 'ns')
 
         frm_logbox.grid_rowconfigure(0, weight=0)  # Disable resizing of label
         frm_logbox.grid_rowconfigure(1, weight=1)  # Enable vertical resizing of logbox + scrollbar
         frm_logbox.grid_columnconfigure(0, weight=1)  # Enables horizontal resizing of logbox
-        
 
 
     def print_data(self):
