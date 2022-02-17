@@ -6,11 +6,11 @@ TODO: Create custom configuration for how answered/unanswered questions should b
 """
 
 import logging; logging.basicConfig(level=logging.INFO, format='%(asctime)s -  %(levelname)s - %(message)s', datefmt='%H:%M:%S')
-import traceback
-import threading
+from traceback import format_exc
+from threading import Thread
+from itertools import cycle
 import tkinter as tk
 import tkinter.ttk as ttk
-from tkinter import filedialog
 from selenium.common.exceptions import WebDriverException
 import scraper
 from scraper import data
@@ -42,14 +42,17 @@ class Interface(tk.Tk):
         super().__init__()
         self.title = "Altfragen Scraper"
 
-        # Attributes
-        self.has_finished = False  # Relates to whether user has reached summary page of exam
+        # Starting strings
+        save_text = "Noch keine Fragen"
+        browser_status_text = "Browser Status: Nicht gestartet"
+        introduction = """Introductory Paragraph 1
+Introductory Paragraph 2
+Introductory Paragraph 3"""  # Shown in logbox at startup
 
-        # Interface
+        # Window
         self.minsize(500, 300)
         self.grid_columnconfigure(1, weight=1)  # Enable horizontal resizing of logbox
         self.grid_rowconfigure(0, weight=1)
-
 
         # Browser selection frame
         frm_browser = tk.Frame(self)
@@ -73,14 +76,14 @@ class Interface(tk.Tk):
         frm_save = tk.Frame(self)
         frm_save.grid(row=1, column=0, padx=(10,0), pady=10, sticky='s')
 
-        self.btn_save = ttk.Button(frm_save, text='Altfragen speichern', state='disabled', command=placeholder)
+        self.btn_save = ttk.Button(frm_save, text='Altfragen speichern', command=placeholder)
         self.btn_save.grid(row=1, column=0, sticky='ew')
         
-        self.lbl_save_text = tk.StringVar(frm_save, "Noch keine Fragen")
-        ttk.Label(frm_save, textvariable=self.lbl_save_text, font=(None, 8), foreground='#484848'
+        self.lbl_save_text = tk.StringVar(frm_save, save_text)
+        ttk.Label(frm_save, textvariable=self.lbl_save_text, font=('TkTextFont', 8), foreground='#484848'
             ).grid(row=0, column=0, padx=5)
 
-        # Logbox Wrapper containing Label and Browser Status
+        # Logbox Wrapper containing Label, Browser Status, and Logbox + Scrollbar
         frm_logbox_wrapper = tk.Frame(self)
         frm_logbox_wrapper.grid(row=0, column=1, rowspan=2, padx=10, pady=10, sticky='nsew')
         frm_logbox_wrapper.columnconfigure(1, weight=1)
@@ -89,17 +92,18 @@ class Interface(tk.Tk):
         ttk.Label(frm_logbox_wrapper, text='Log/Altfragen'
             ).grid(row=0, column=0, sticky='w', pady=(0, 3))
         
-        self.lbl_browser_status_text = tk.StringVar(frm_logbox_wrapper)
+        self.lbl_browser_status_text = tk.StringVar(frm_logbox_wrapper, browser_status_text)
         ttk.Label(frm_logbox_wrapper, textvariable=self.lbl_browser_status_text, foreground=('#505050')
             ).grid(row=0, column=1, padx=20, pady=(0,5), sticky='e')
-        self.status('Nicht gestartet')
-
-        # Logbox itself
+        
+        # Logbox + Scrollbar
         frm_logbox = tk.Frame(frm_logbox_wrapper)
         frm_logbox.grid(row=1, column=0, columnspan=2, sticky='nsew')
 
-        self.logbox = tk.Text(frm_logbox, state='disabled', wrap='word', font=('Helvetica', 10), borderwidth=10, relief=tk.FLAT)  # Border creates illusion of padding inside text box
+        self.logbox = tk.Text(frm_logbox, wrap='word', font=('Helvetica', 10), borderwidth=10, relief=tk.FLAT)  # Border creates illusion of padding inside text box
         self.logbox.grid(row=1, sticky='nsew')
+        self.logbox.insert(0.0, introduction)
+        self.logbox['state'] = 'disabled'
 
         logbox_scrollbar = ttk.Scrollbar(frm_logbox, orient='vertical', command=self.logbox.yview)
         self.logbox.configure({'yscrollcommand': logbox_scrollbar.set})
@@ -108,6 +112,9 @@ class Interface(tk.Tk):
         frm_logbox.grid_rowconfigure(0, weight=0)  # Disable resizing of label
         frm_logbox.grid_rowconfigure(1, weight=1)  # Enable vertical resizing of logbox + scrollbar
         frm_logbox.grid_columnconfigure(0, weight=1)  # Enables horizontal resizing of logbox
+
+        self.logbox.mark_set('end_of_questions', 4.0)  # As the Introduction text is replaced by the questions once they're registered
+        self.logbox.mark_set('error_log', 5.0)
 
 
     def print_data(self):
@@ -137,7 +144,7 @@ class Interface(tk.Tk):
         yview = self.logbox.yview()
 
         self.logbox['state'] = 'normal'
-        self.logbox.delete(0.0, tk.END)
+        self.logbox.delete(0.0, 'end_of_questions')
         self.logbox.insert(0.0, string[:-2])  # -2 since last \n is meant to be omitted from string
         self.logbox['state'] = 'disabled'
 
@@ -147,17 +154,16 @@ class Interface(tk.Tk):
     def log(self, string):
         """Sends a string to self.txt_log; important to note: self.print_data() will overwrite what's in log every time it's run"""
         self.logbox['state'] = 'normal'
-        self.logbox.insert('end', ('' if self.logbox.get(0.0, 'end') else '\n') + string)
+        self.logbox.insert(tk.END, return_breakline(self.logbox.winfo_width()) + string)
         self.logbox.yview_moveto(5000.0)  # 'end' doesn't work here for some reason, so I just went for a really high number.
         self.logbox['state'] = 'disabled'
 
     
-    def finished(self):
-        self.has_finished = True
+    def has_finished(self):
         self.status('Bereit zu speichern!')
 
         self.log(return_breakline(self.logbox.winfo_width()))
-        self.log('Nun gerne auf "Altfragen Speichern" klicken; den Browser kannst du ohne Gefahr schließen!')
+        self.log('Nun gerne auf "Altfragen Speichern" klicken; den Browser kannst du ohne Gefahr schließen!', mark='end_of_questions')
 
 
     def on_btn_browser_click(self):
@@ -172,14 +178,11 @@ class Interface(tk.Tk):
 
 
     def selenium_run(self):
-        threadObj = threading.Thread(target=self._selenium_run)
+        threadObj = Thread(target=self._selenium_run)
         try:
             threadObj.start()
         except WebDriverException:
-            str_traceback = traceback.format_exc()
-            logging.critical('Webdriver crashed:\n' + str_traceback)
-            self.status('Fehler')
-            self.log(return_breakline() + str_traceback)
+            self.log_traceback()
 
 
     def _selenium_run(self):
@@ -191,10 +194,7 @@ class Interface(tk.Tk):
 
             scraper.scrape(self.driver, self)
         except Exception:
-            str_traceback = traceback.format_exc()
-            logging.critical('Couldn\'t open webdriver:\n' + str_traceback)
-            self.status('Fehler')
-            self.log('\n\n' + str_traceback)
+            self.log_traceback()
 
 
     def selenium_listener(self):
@@ -208,31 +208,24 @@ class Interface(tk.Tk):
 
 
     def status(self, string):
-        self.lbl_browser_status_text.set('Browser Status: ' + string)
-        logging.debug('Browser Status: ' + string)
+        string = 'Browser Status: ' + string
+        self.lbl_browser_status_text.set(string)
+        logging.debug(string)
         
         if '...' in string:
-            self._loading_status(string)
+            self._animate_trailing_commas_status = string[:-3]  # [:-3] removes trailing commas
+            self._animate_trailing_commas_dots = cycle(('   ', '.  ', '.. ', '...'))
+            self._animate_trailing_commas()
 
     
-    def _loading_status(self, original_string):
-        pass
-        # Shit don't work yet
-        # current_text = self.lbl_browser_status_text.get()
+    def _animate_trailing_commas(self):
+        """Animates trailing commas in the status"""
+        status_no_commas = self._animate_trailing_commas_status
+        dots = next(self._animate_trailing_commas_dots)
 
-        # if '...' in current_text:
-        #     text = current_text[:-3] + '   '
-        # elif '..' in current_text:
-        #     text = current_text + '.'
-        # elif '.' in current_text:
-        #     text = current_text + '. '
-        # elif current_text in original_string:
-        #     text = current_text + '.  '
-        # else:
-        #     return
-        
-        # self.lbl_browser_status_text.set(text)
-        # self.after(1000, self._loading_status)
+        if status_no_commas in self.lbl_browser_status_text.get():  # Abort the loop when new browser status
+            self.lbl_browser_status_text.set(status_no_commas + dots)
+            self.after(750, self._animate_trailing_commas)
 
     
     def data_listener(self):
@@ -242,95 +235,29 @@ class Interface(tk.Tk):
         else:
             self.after(1000, self.data_listener)
 
+    
+    def log_traceback(self):
+        str_traceback = format_exc()
+        logging.critical('Webdriver issue:\n' + str_traceback)
+        self.status('Fehler')
+        self.log(str_traceback)
+
 
 def return_breakline(width):
+    """Returns a line of ------- corresponding to the width of the logbox in order to visually break text apart"""
     width = width-24  # 20 since padx=10, 4 because... well, I don't know, some weird default padding in the textbox
     count = round(width/8)  # One - character takes up 8 pixels, hence pixels/8
     return '\n' + '-'*count + '\n'
 
 
 def placeholder():
-    pass
+    root.status('Hello world...')
+    print("This is a placeholder")
 
 
 def main():
+    global root
     root = Interface()
-    root.log("""1. Wie heißt die Logik des Forschungsprozesses? (1)
-a. Methodologie
-b. Prozessologie
-c.*Epistemologie
-d. Pragmatologie
-
-2. Was trifft zu? (3)
-Laut Émile Durkheim lassen sich soziale Tatbestände durch psychologische Faktoren erklären.
-WEIL
-Émile Durkheim wollte der Ethnographie zum Durchbruch verhelfen.
-a. Die erste Aussage ist richtig.
-b.*Die erste Aussage ist falsch.
-c.*Die zweite Aussage ist richtig.
-d. Die zweite Aussage ist falsch.
-e. Die Weil-Verknüpfung ist berechtigt.
-f.*Die Weil-Verknüpfung ist falsch.
-
-3. Was trifft zu? (3)
-Die Studie „Die Arbeitslosen von Marienthal“ lässt sich als Aktionsforschung bezeichnen.
-WEIL
-Die Forschenden der Studie „Die Arbeitslosen von Marienthal“ sollten die Rolle eins für die Gemeinschaft nützlichen
-Mitglieds einnehmen.
-a.*Die erste Aussage ist richtig.
-b. Die erste Aussage ist falsch.
-c.*Die zweite Aussage ist richtig.
-d. Die zweite Aussage ist falsch.
-e.*Die Weil-Verknüpfung ist berechtigt.
-f. Die Weil-Verknüpfung ist falsch.
-
-4. Wie ist Émile Durkheim in seiner Studie „Der Selbstmord“ vorgegangen? (1)
-a. Er hat experimentelle und natürliche Daten kombiniert.
-b. Er hat psychologische Tests durchgeführt.
-c. Er hat persönliche Dokumente analysiert.
-d.*Er hat Hypothesen aufgestellt und überprüft.
-
-5. Welche der folgenden Merkmale stehen für eine erklärende Vorgehensweise in den Sozialwissenschaften? (2)
-a.*hypothesentestend
-b.*quantitativ
-c. situationsbezogen
-d. theoriegenerierend
-e. qualitativ
-
-6. Das Zusammenfassen mehrerer Variablen zu einer Kennzahl nennt man... (1)
-a. Panel.
-b. Kausalzusammenhang.
-c. Normalverteilung.
-d.*Index.
-
-7. Welcher Erkenntnislogik folgt William F. Whytes Studie "Street Corner Society"? (2)
-a. deduktiv
-b.*idiographisch
-c. kausal-erklärend
-d. nomothetisch
-e.*qualitativ
-
-8. Unter Kausalität versteht man... (1)
-a. das Zusammenfassen von mindestens zwei Variablen.
-b. das gleichzeitige Auftreten von zwei Phänomenen.
-c. die Schlussfolgerung aus einer logischen Ableitung.
-d.*einen bekannten Ursache-Wirkung Zusammenhang.
-
-9. Ein Beispiel:
-In einem oberösterreichischen Badeort wird die See nahe Landschaft zunehmend durch Zweitwohnsitze verbaut. Um
-die daraus entstehenden Konflikte zu untersuchen, wurde ein Schwimmwettbewerb zwischen der örtlichen
-Bevölkerung und Personen mit Zweitwohnsitz organisiert und das Verhalten beider Gruppen beobachtet.
-Um welchen Typus von Daten würde es sich nach den heuristischen Achsen von Lazarsfeld handeln? (1)
-a.*experimentell
-b. komplex
-c. subjektiv
-d. natürlich
-
-10. Schlüsselpersonen spielen eine wichtige Rolle in der Feldforschung, weil sie...(1)
-a. die Forschung leiten.
-b.*den Zugang zum Feld verschaffen.
-c. als Testpersonen fungieren.
-d. Forschungsprojekte finanzieren.""")
     root.mainloop()
 
 
