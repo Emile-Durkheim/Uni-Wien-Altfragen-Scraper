@@ -7,6 +7,7 @@ TODO: Create custom configuration for how answered/unanswered questions should b
 
 import logging; logging.basicConfig(level=logging.INFO, format='%(asctime)s -  %(levelname)s - %(message)s', datefmt='%H:%M:%S')
 import traceback
+import threading
 import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import filedialog
@@ -42,7 +43,7 @@ class Interface(tk.Tk):
         self.title = "Altfragen Scraper"
 
         # Attributes
-
+        self.has_finished = False  # Relates to whether user has reached summary page of exam
 
         # Interface
         self.minsize(500, 300)
@@ -91,13 +92,11 @@ class Interface(tk.Tk):
         self.lbl_browser_status_text = tk.StringVar(frm_logbox_wrapper)
         ttk.Label(frm_logbox_wrapper, textvariable=self.lbl_browser_status_text, foreground=('#505050')
             ).grid(row=0, column=1, padx=20, pady=(0,5), sticky='e')
-        self.set_browser_status('Nicht gestartet')
+        self.status('Nicht gestartet')
 
         # Logbox itself
         frm_logbox = tk.Frame(frm_logbox_wrapper)
         frm_logbox.grid(row=1, column=0, columnspan=2, sticky='nsew')
-
-        ttk.Style().configure('TText', padding='5 1 1 1')
 
         self.logbox = tk.Text(frm_logbox, state='disabled', wrap='word', font=('Helvetica', 10), borderwidth=10, relief=tk.FLAT)  # Border creates illusion of padding inside text box
         self.logbox.grid(row=1, sticky='nsew')
@@ -122,16 +121,19 @@ class Interface(tk.Tk):
         ALPHABET = 'abcdefghijklmnopqrstuvwxyz'
 
         for question in data.values():
+            # Prints question
             string += "{}. {}\n".format(question['index'], question['question'])
             
-            for i, answer in enumerate(question['answers']):
-                if question['answers'][answer] is True:  # If answer is selected
+            for i, answer in enumerate(question['answer_order']):
+                # Prints answer as two different strings depending on whether answer was selected or not
+                if question['answers'][answer] is True:
                     string += "{}.*{}\n".format(ALPHABET[i], answer)
                 else:
                     string += "{}. {}\n".format(ALPHABET[i], answer)
                 
-            string += '\n'  # So different questions are visually broken apart
+            string += '\n'
         
+        # Inserts new string, gets rid of the old, and resets the screen to the same place it was before
         yview = self.logbox.yview()
 
         self.logbox['state'] = 'normal'
@@ -149,6 +151,14 @@ class Interface(tk.Tk):
         self.logbox.yview_moveto(5000.0)  # 'end' doesn't work here for some reason, so I just went for a really high number.
         self.logbox['state'] = 'disabled'
 
+    
+    def finished(self):
+        self.has_finished = True
+        self.status('Bereit zu speichern!')
+
+        self.log(return_breakline(self.logbox.winfo_width()))
+        self.log('Nun gerne auf "Altfragen Speichern" klicken; den Browser kannst du ohne Gefahr schließen!')
+
 
     def on_btn_browser_click(self):
         """Figures out which state the browser is in and starts the relevant processes"""
@@ -162,18 +172,29 @@ class Interface(tk.Tk):
 
 
     def selenium_run(self):
-        """Tries to start Selenium and runs the scraper"""
+        threadObj = threading.Thread(target=self._selenium_run)
         try:
-            self.set_browser_status('Startet...')
+            threadObj.start()
+        except WebDriverException:
+            str_traceback = traceback.format_exc()
+            logging.critical('Webdriver crashed:\n' + str_traceback)
+            self.status('Fehler')
+            self.log(return_breakline() + str_traceback)
+
+
+    def _selenium_run(self):
+        """Runs selenium"""
+        try:
+            self.status('Startet...')
             self.driver = scraper.get_selenium(self.choice_browser.get())
             self.selenium_listener()
+
+            scraper.scrape(self.driver, self)
         except Exception:
             str_traceback = traceback.format_exc()
             logging.critical('Couldn\'t open webdriver:\n' + str_traceback)
-            self.set_browser_status('Fehler')
+            self.status('Fehler')
             self.log('\n\n' + str_traceback)
-
-        scraper.scrape(self.driver, self)
 
 
     def selenium_listener(self):
@@ -182,18 +203,54 @@ class Interface(tk.Tk):
             self.driver.current_url  # Throws up an exception when browser is closed
             self.after(250, self.selenium_listener)  # Function recursively calls itself
         except WebDriverException:
-            self.set_browser_status('Unerwartet geschlossen')
+            self.status('Unerwartet geschlossen')
             self.btn_browser_text.set(self.STR_OPEN_BROWSER)
 
 
-    def set_browser_status(self, string):
+    def status(self, string):
         self.lbl_browser_status_text.set('Browser Status: ' + string)
         logging.debug('Browser Status: ' + string)
+        
+        if '...' in string:
+            self._loading_status(string)
+
+    
+    def _loading_status(self, original_string):
+        pass
+        # Shit don't work yet
+        # current_text = self.lbl_browser_status_text.get()
+
+        # if '...' in current_text:
+        #     text = current_text[:-3] + '   '
+        # elif '..' in current_text:
+        #     text = current_text + '.'
+        # elif '.' in current_text:
+        #     text = current_text + '. '
+        # elif current_text in original_string:
+        #     text = current_text + '.  '
+        # else:
+        #     return
+        
+        # self.lbl_browser_status_text.set(text)
+        # self.after(1000, self._loading_status)
+
+    
+    def data_listener(self):
+        """Checks whether there are values in data and enables the 'Altfragen Speichern' button if so"""
+        if data:
+            self.btn_save['state'] = 'normal'
+        else:
+            self.after(1000, self.data_listener)
+
+
+def return_breakline(width):
+    width = width-24  # 20 since padx=10, 4 because... well, I don't know, some weird default padding in the textbox
+    count = round(width/8)  # One - character takes up 8 pixels, hence pixels/8
+    return '\n' + '-'*count + '\n'
 
 
 def placeholder():
-    print("You triggered a placeholder!")
-    return True
+    pass
 
 
 def main():
@@ -275,7 +332,7 @@ b.*den Zugang zum Feld verschaffen.
 c. als Testpersonen fungieren.
 d. Forschungsprojekte finanzieren.""")
     root.mainloop()
-    
+
 
 if __name__ == '__main__':
     main()
