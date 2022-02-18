@@ -10,8 +10,10 @@ from traceback import format_exc
 from threading import Thread
 from itertools import cycle
 import tkinter as tk
+from tkinter import messagebox
 import tkinter.ttk as ttk
 from selenium.common.exceptions import WebDriverException
+import webbrowser
 import scraper
 from scraper import data, data_order
 
@@ -41,6 +43,9 @@ class Interface(tk.Tk):
         """
         super().__init__()
         self.title = "Altfragen Scraper"
+
+        # Attributes
+        self.exam_url = 'http://moodle.univie.ac.at/'
 
         # Starting strings
         save_text = "Noch keine Fragen"
@@ -201,31 +206,35 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
 
 
     def selenium_run(self):
+        """Starts driver in thread so as to ensure responsiveness of Interface"""
         threadObj = Thread(target=self._selenium_run)
-        try:
-            threadObj.start()
-        except WebDriverException:
-            self.log_traceback()
+        threadObj.start()
 
     def _selenium_run(self):
-        """Runs selenium"""
+        """Runs selenium, handles errors"""
         try:
             self.status('Startet...')
             self.driver = scraper.get_selenium(self.choice_browser.get())
-            self.selenium_listener()
 
             scraper.scrape(self.driver, self)
-        except Exception:
-            self.log_traceback()
+        except:
+            # Checks whether Selenium window was closed. Since this is typically done by a user, it returns a less-threatening
+            # warning message if so. If the driver is still alive, it returns a more threatening warning message, since the driver
+            # isn't logging anything anymore.
+            if self.driver_is_alive():
+                self.on_driver_crash()
+            else:
+                self.status("Unerwartet geschlossen")
+                self.btn_browser_text.set(self.STR_OPEN_BROWSER)
+                logging.critical(format_exc)
 
-    def selenium_listener(self):
-        """Periodically checks that Selenium is still alive. If it died, it changes the text on self.btn_browser_text to 'Browser Schließen'"""
+    def driver_is_alive(self):
+        """Checks whether the Selenium window has been closed"""
         try: 
             self.driver.current_url  # Throws up an exception when browser is closed
-            self.after(250, self.selenium_listener)  # Function recursively calls itself
         except WebDriverException:
-            self.status('Unerwartet geschlossen')
-            self.btn_browser_text.set(self.STR_OPEN_BROWSER)
+            return False 
+        return True
 
     
     def data_listener(self):
@@ -241,6 +250,21 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
 
         self.log(return_breakline(self.logbox.winfo_width()))
         self.log('Nun gerne auf "Altfragen Speichern" klicken; den Browser kannst du ohne Gefahr schließen!', mark='end_of_questions')
+
+    
+    def on_driver_crash(self):
+        """When selenium throws up an error, quit selenium and ask user whether to continue on Selenium or open in normal browser. 
+        If user chooses normal browser, the exact URL of the exam will be opened."""
+        self.log_traceback()
+        self.driver.quit()
+
+        return_val = messagebox.YESNOCANCEL(text="""Huch! Der Browser ist abgestürzt! Aber keine Panik, alle Antworten sind auf Moodle gespeichert!
+Möchtest du's nochmal mit dem AltfragenScraper probieren? (Wenn du auf "Nein" klickst, wird dein Standardbrowser gestartet)""")
+
+        if return_val is True:
+            self.selenium_run()
+        elif return_val is False:
+            webbrowser.open(self.exam_url)
 
 
 def return_breakline(width):
