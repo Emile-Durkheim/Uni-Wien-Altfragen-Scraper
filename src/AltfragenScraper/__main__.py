@@ -13,7 +13,7 @@ import tkinter as tk
 import tkinter.ttk as ttk
 from selenium.common.exceptions import WebDriverException
 import scraper
-from scraper import data
+from scraper import data, data_order
 
 class Interface(tk.Tk):
     # Just a couple of strings whose exact states are important
@@ -127,13 +127,16 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         string = ''
         ALPHABET = 'abcdefghijklmnopqrstuvwxyz'
 
-        for question in data.values():
+        for i, id in enumerate(data_order):
+            question = data[id]
+            index = i + 1  # Since enumerate starts at 0
+
             # Prints question
-            string += "{}. {}\n".format(question['index'], question['question'])
+            string += "{}. {}\n".format(index, question['question'])
             
-            for i, answer in enumerate(question['answer_order']):
+            for i, answer in enumerate(question['answers']):
                 # Prints answer as two different strings depending on whether answer was selected or not
-                if question['answers'][answer] is True:
+                if question['is_selected'][i] is True:
                     string += "{}.*{}\n".format(ALPHABET[i], answer)
                 else:
                     string += "{}. {}\n".format(ALPHABET[i], answer)
@@ -158,12 +161,32 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         self.logbox.yview_moveto(5000.0)  # 'end' doesn't work here for some reason, so I just went for a really high number.
         self.logbox['state'] = 'disabled'
 
-    
-    def has_finished(self):
-        self.status('Bereit zu speichern!')
+    def log_traceback(self):
+        str_traceback = format_exc()
+        logging.critical('Webdriver issue:\n' + str_traceback)
+        self.status('Fehler')
+        self.log(str_traceback)
 
-        self.log(return_breakline(self.logbox.winfo_width()))
-        self.log('Nun gerne auf "Altfragen Speichern" klicken; den Browser kannst du ohne Gefahr schließen!', mark='end_of_questions')
+    
+    def status(self, string):
+        string = 'Browser Status: ' + string
+        self.lbl_browser_status_text.set(string)
+        logging.debug(string)
+        
+        if '...' in string:
+            self._animate_trailing_commas_dots = cycle(('   ', '.  ', '.. ', '...'))
+            self._animate_trailing_commas(string)
+
+    def _animate_trailing_commas(self, string):
+        """Animates trailing commas in the status"""
+        if '...' in string:
+            string = string[:-3]  # Removes the trailing commas
+
+        dots = next(self._animate_trailing_commas_dots)
+
+        if string in self.lbl_browser_status_text.get():  # Abort the loop when new browser status
+            self.lbl_browser_status_text.set(string + dots)
+            self.after(750, lambda: self._animate_trailing_commas(string))
 
 
     def on_btn_browser_click(self):
@@ -184,7 +207,6 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         except WebDriverException:
             self.log_traceback()
 
-
     def _selenium_run(self):
         """Runs selenium"""
         try:
@@ -196,7 +218,6 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         except Exception:
             self.log_traceback()
 
-
     def selenium_listener(self):
         """Periodically checks that Selenium is still alive. If it died, it changes the text on self.btn_browser_text to 'Browser Schließen'"""
         try: 
@@ -205,27 +226,6 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         except WebDriverException:
             self.status('Unerwartet geschlossen')
             self.btn_browser_text.set(self.STR_OPEN_BROWSER)
-
-
-    def status(self, string):
-        string = 'Browser Status: ' + string
-        self.lbl_browser_status_text.set(string)
-        logging.debug(string)
-        
-        if '...' in string:
-            self._animate_trailing_commas_status = string[:-3]  # [:-3] removes trailing commas
-            self._animate_trailing_commas_dots = cycle(('   ', '.  ', '.. ', '...'))
-            self._animate_trailing_commas()
-
-    
-    def _animate_trailing_commas(self):
-        """Animates trailing commas in the status"""
-        status_no_commas = self._animate_trailing_commas_status
-        dots = next(self._animate_trailing_commas_dots)
-
-        if status_no_commas in self.lbl_browser_status_text.get():  # Abort the loop when new browser status
-            self.lbl_browser_status_text.set(status_no_commas + dots)
-            self.after(750, self._animate_trailing_commas)
 
     
     def data_listener(self):
@@ -236,11 +236,11 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
             self.after(1000, self.data_listener)
 
     
-    def log_traceback(self):
-        str_traceback = format_exc()
-        logging.critical('Webdriver issue:\n' + str_traceback)
-        self.status('Fehler')
-        self.log(str_traceback)
+    def has_finished(self):
+        self.status('Bereit zu speichern!')
+
+        self.log(return_breakline(self.logbox.winfo_width()))
+        self.log('Nun gerne auf "Altfragen Speichern" klicken; den Browser kannst du ohne Gefahr schließen!', mark='end_of_questions')
 
 
 def return_breakline(width):
@@ -251,13 +251,14 @@ def return_breakline(width):
 
 
 def placeholder():
-    root.status('Hello world...')
     print("This is a placeholder")
 
 
 def main():
     global root
+
     root = Interface()
+    root.print_data()
     root.mainloop()
 
 
