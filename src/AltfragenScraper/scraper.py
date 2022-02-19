@@ -6,22 +6,9 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.common.exceptions import StaleElementReferenceException
 from subprocess import CREATE_NO_WINDOW
-import __main__
-
 data = {
-    'q_num_123456': {
-        'question': 'When did the second world war end in full commitment as according to the Paris Climate Accord of 1923? (2)',
-        'answers': ['1945', '1955', '1967', '1939'],
-        'is_selected': [False, False, True, True]
-    },
-    'q_num_2313': {
-        'question': 'When did the second world war end in full commitment as according to the Paris Climate Accord of 1923? (2)',
-        'answers': ['AKSJdnkjASdnkjandkjsNKDjaSNKDJ', 'DJWNAODNWOANWDIWAJDIAWDJAWODJSOAIDJSKDASLKdnlksndlksndaklsndlKASDSNLAKSNDASJDnLNDwkjadnLJDNkJASDNkasjSNDkjaNDkjwndjkASNkd', 'DINAWODAWIDONAOWIDAWD', 'OIDÖJWAodiAHDoiAWHDoiWHdOIAWDhOIADHoaD'],
-        'is_selected': [True, False, True, False]
-    }
+    'question_order': []
 }
-
-data_order = ['q_num_123456', 'q_num_2313']
 
 def get_selenium(browser: str):
     """Starts Selenium without console window"""
@@ -47,7 +34,7 @@ def scrape(driver: webdriver.Firefox, inter, data=data):
     QUIZ_URL = '/mod/quiz/attempt'
     SUMMARY_URL = '/mod/quiz/summary'
 
-    driver.get('https://moodle.univie.ac.at/')
+    driver.get(inter.exam_url)
 
     # Wait until exam page has been reached
     inter.status('Warte auf Login...')
@@ -60,7 +47,7 @@ def scrape(driver: webdriver.Firefox, inter, data=data):
 
     # Exam has been reached
     inter.exam_url = driver.current_url
-    inter.status('Sammelt Altfragen...')
+    inter.status('Sammle Altfragen...')
 
     while True:
         time.sleep(0.25)
@@ -74,8 +61,8 @@ def scrape(driver: webdriver.Firefox, inter, data=data):
         # Sorts gathered questions into data
         for id, question in questions.items():
             # Add to data and data_order if new item
-            if id not in data_order:
-                data_order.append(id)
+            if id not in data['question_order']:
+                data['question_order'].append(id)
                 data[id] = question
                 inter.print_data()
             # Check if selection identical to last scan, else update

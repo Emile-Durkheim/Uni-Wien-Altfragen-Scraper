@@ -5,7 +5,7 @@ to implement a more sophisticated version of print_data lol
 TODO: Create custom configuration for how answered/unanswered questions should be displayed in
 """
 
-import logging; logging.basicConfig(level=logging.INFO, format='%(asctime)s -  %(levelname)s - %(message)s', datefmt='%H:%M:%S')
+import logging
 from traceback import format_exc
 from threading import Thread
 from itertools import cycle
@@ -15,13 +15,23 @@ from tkinter import messagebox
 from selenium.common.exceptions import WebDriverException
 import webbrowser
 import scraper
-from scraper import data, data_order
+from scraper import data
+import funcs
 
 class Interface(tk.Tk):
-    # Just a couple of strings whose exact states are important
-    STR_CLOSE_BROWSER = 'Browser schließen'
-    STR_OPEN_BROWSER = 'Browser öffnen'
     def __init__(self):
+        super().__init__()
+
+        # Attributes
+        self.exam_url = 'https://moodle.univie.ac.at/'
+        self.tries_scraper_restart = 0
+
+        self.STR_CLOSE_BROWSER = 'Browser schließen'  # For self.btn_browser_text; their exact states are checked for logic,
+        self.STR_OPEN_BROWSER = 'Browser öffnen'      # hence why they're assigned as a literals here.
+
+        self.add_widgets()
+    
+    def add_widgets(self):
         """
         Initializes the Tkinter window.
         The window is set up to contain three frames:
@@ -41,11 +51,7 @@ class Interface(tk.Tk):
         - self.btn_save (ttk.Button)
         - self.lbl_browser_status_text (StringVar)
         """
-        super().__init__()
-        self.title = "Altfragen Scraper"
-
-        # Attributes
-        self.exam_url = 'http://moodle.univie.ac.at/'
+        self.title("Altfragen Scraper")
 
         # Starting strings
         save_text = "Noch keine Fragen"
@@ -81,7 +87,7 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         frm_save = tk.Frame(self)
         frm_save.grid(row=1, column=0, padx=(10,0), pady=10, sticky='s')
 
-        self.btn_save = ttk.Button(frm_save, text='Altfragen speichern', command=placeholder)
+        self.btn_save = ttk.Button(frm_save, text='Altfragen speichern', command=funcs.placeholder)
         self.btn_save.grid(row=1, column=0, sticky='ew')
         
         self.lbl_save_text = tk.StringVar(frm_save, save_text)
@@ -120,57 +126,35 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
 
         self.logbox.mark_set('end_of_questions', 4.0)  # As the Introduction text is replaced by the questions once they're registered
         self.logbox.mark_set('error_log', 5.0)
+        return
 
 
     def print_data(self):
         """
         Clears the logbox and inserts all gathered questions, then resets the user's position inside the
-        logbox to what it had been before clearing it.txt
-        Potential TODO: Add different ways of visualizing selected questions vs unselected questions; if
-        I wanna go real crazy, maybe even include a config box to add your own syntax.
+        logbox to what it had been before clearing it.
         """
-        string = ''
-        ALPHABET = 'abcdefghijklmnopqrstuvwxyz'
-
-        for i, id in enumerate(data_order):
-            question = data[id]
-            index = i + 1  # Since enumerate starts at 0
-
-            # Prints question
-            string += "{}. {}\n".format(index, question['question'])
-            
-            for i, answer in enumerate(question['answers']):
-                # Prints answer as two different strings depending on whether answer was selected or not
-                if question['is_selected'][i] is True:
-                    string += "{}.*{}\n".format(ALPHABET[i], answer)
-                else:
-                    string += "{}. {}\n".format(ALPHABET[i], answer)
-                
-            string += '\n'
+        string = funcs.get_data_str(data)
         
         # Inserts new string, gets rid of the old, and resets the screen to the same place it was before
         yview = self.logbox.yview()
 
         self.logbox['state'] = 'normal'
         self.logbox.delete(0.0, 'end_of_questions')
-        self.logbox.insert(0.0, string[:-2])  # -2 since last \n is meant to be omitted from string
+        self.logbox.insert(0.0, string)
         self.logbox['state'] = 'disabled'
 
         self.logbox.yview_moveto(yview[0])
+        return
 
 
     def log(self, string):
         """Sends a string to self.txt_log; important to note: self.print_data() will overwrite what's in log every time it's run"""
         self.logbox['state'] = 'normal'
-        self.logbox.insert(tk.END, return_breakline(self.logbox.winfo_width()) + string)
+        self.logbox.insert(tk.END, funcs.return_breakline(self.logbox.winfo_width()) + string)
         self.logbox.yview_moveto(5000.0)  # 'end' doesn't work here for some reason, so I just went for a really high number.
         self.logbox['state'] = 'disabled'
-
-    def log_traceback(self):
-        str_traceback = format_exc()
-        logging.critical('Webdriver issue:\n' + str_traceback)
-        self.status('Fehler')
-        self.log(str_traceback)
+        return
 
     
     def status(self, string):
@@ -181,6 +165,7 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         if '...' in string:
             self._animate_trailing_commas_dots = cycle(('   ', '.  ', '.. ', '...'))
             self._animate_trailing_commas(string)
+        return
 
     def _animate_trailing_commas(self, string):
         """Animates trailing commas in the status"""
@@ -192,6 +177,7 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         if string in self.lbl_browser_status_text.get():  # Abort the loop when new browser status
             self.lbl_browser_status_text.set(string + dots)
             self.after(750, lambda: self._animate_trailing_commas(string))
+        return
 
 
     def on_btn_browser_click(self):
@@ -203,58 +189,53 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         elif self.btn_browser_text.get() == self.STR_CLOSE_BROWSER:
             self.driver.quit()
             self.btn_browser_text.set(self.STR_OPEN_BROWSER)
+        return
 
 
     def selenium_run(self):
         """Starts driver in thread so as to ensure responsiveness of Interface"""
-        threadObj = Thread(target=self._selenium_run)
+        threadObj = Thread(target=self._selenium_start)
         threadObj.start()
+        return
 
-    def _selenium_run(self):
-        """Runs selenium, handles errors"""
+    def _selenium_start(self):
+        """Tries to start selenium"""
         try:
             self.status('Startet...')
             self.driver = scraper.get_selenium(self.choice_browser.get())
+            self._scraper_run()
+        except:
+            self.log(format_exc)  # PLACEHOLDER
+        return
 
+    def _scraper_run(self):
+        """
+        Runs the scraper and does error handling.
+        Should the scraper crash, tries to restart it 3 times before alerting the user.
+        Should the driver crash, opens text box polling the user on whether to continue in Selenium or finish exam in
+        system's default browser.
+        """
+        try:
             scraper.scrape(self.driver, self)
         except:
-            # Checks whether Selenium window was closed. Since this is typically done by a user, it returns a less-threatening
-            # warning message if so. If the driver is still alive, it returns a more threatening warning message, since the driver
-            # isn't logging anything anymore.
-            if self.driver_is_alive():
+            if not self.driver_is_alive():
+                self.status("Keine Rückmeldung")
                 self.on_driver_crash()
+            elif self.tries_scraper_restart <= 3:
+                self.tries_scraper_restart += 1
+                self._scraper_run()
             else:
-                self.status("Unerwartet geschlossen")
-                self.btn_browser_text.set(self.STR_OPEN_BROWSER)
-                logging.critical(format_exc())
-
+                self.on_fatal_scraper_error()
+        return
+  
     def driver_is_alive(self):
         """Checks whether the Selenium window has been closed"""
         try: 
-            self.driver.current_url  # Throws up an exception when browser is closed
-        except WebDriverException:
-            return False 
+            self.driver.current_url  # Raises WebDriverException when browser is closed
+            return True
         except:
-            self.log_traceback()
             return False
-        return True
 
-    
-    def data_listener(self):
-        """Checks whether there are values in data and enables the 'Altfragen Speichern' button if so"""
-        if data:
-            self.btn_save['state'] = 'normal'
-        else:
-            self.after(1000, self.data_listener)
-
-    
-    def has_finished(self):
-        self.status('Bereit zu speichern!')
-
-        self.log(return_breakline(self.logbox.winfo_width()))
-        self.log('Nun gerne auf "Altfragen Speichern" klicken; den Browser kannst du ohne Gefahr schließen!', mark='end_of_questions')
-
-    
     def on_driver_crash(self):
         """When selenium throws up an error, quit selenium and ask user whether to continue on Selenium or open in normal browser. 
         If user chooses normal browser, the exact URL of the exam will be opened."""
@@ -262,34 +243,46 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         self.driver.quit()
         self.btn_browser_text.set(self.STR_OPEN_BROWSER)
 
-        return_val = messagebox.askyesnocancel(title="Browser Abgestürzt", message="""Keine Panik, alle Antworten sind auf Moodle gespeichert!
-
-Möchtest du's nochmal mit dem AltfragenScraper probieren?\n(Wenn du auf "Nein" klickst, wird dein Standardbrowser gestartet)""")
+        return_val = messagebox.askyesnocancel(title="Browser Abgestürzt", message=(
+            "Keine Panik, alle Antworten sind auf Moodle gespeichert!\n\n"
+            "Möchtest du's nochmal mit dem AltfragenScraper probieren?\n"
+            "(Wenn du auf 'Nein' klickst, wird dein Standardbrowser gestartet)")
+        )
 
         if return_val is True:
             self.selenium_run()
         elif return_val is False:
             webbrowser.open(self.exam_url)
+        return
+    
+    def on_fatal_scraper_error(self):
+        """When selenium throws up an error, quit selenium and ask user whether to continue on Selenium or open in normal browser. 
+        If user chooses normal browser, the exact URL of the exam will be opened."""
+        logging.fatal(format_exc)
 
+        return_val = messagebox.askyesnocancel(title="Unerwarteter Fehler", message=(
+            "Im Browser ist ein unerwarteter Fehler aufgetreten. Es könnte sein, dass Altfragen nicht mehr richtig gesammelt werden.\n"
+            "Browser neu starten?") 
+        )
 
-def return_breakline(width):
-    """Returns a line of ------- corresponding to the width of the logbox in order to visually break text apart"""
-    width = width-24  # 20 since padx=10, 4 because... well, I don't know, some weird default padding in the textbox
-    count = round(width/8)  # One - character takes up 8 pixels, hence pixels/8
-    return '\n' + '-'*count + '\n'
+        if return_val is True:
+            self.driver.quit()
+            self.selenium_run()
+        return
 
+    
+    def data_listener(self):
+        """Checks whether there are questions in data and enables the 'Altfragen Speichern' button if so"""
+        if len(data) > 1:
+            self.btn_save['state'] = 'normal'
+        else:
+            self.after(1000, self.data_listener)
+        return
 
-def placeholder():
-    print("This is a placeholder")
+    
+    def has_finished(self):
+        self.status('Bereit zu speichern!')
 
-
-def main():
-    global root
-
-    root = Interface()
-    root.print_data()
-    root.mainloop()
-
-
-if __name__ == '__main__':
-    main()
+        self.log(funcs.return_breakline(self.logbox.winfo_width()))
+        self.log('Nun gerne auf "Altfragen Speichern" klicken; den Browser kannst du ohne Gefahr schließen!', mark='end_of_questions')
+        return
