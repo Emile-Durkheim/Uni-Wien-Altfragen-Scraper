@@ -10,13 +10,15 @@ from traceback import format_exc
 from threading import Thread
 from itertools import cycle
 import tkinter as tk
+from tkinter import filedialog
 import tkinter.ttk as ttk
 from tkinter import messagebox
 from selenium.common.exceptions import WebDriverException
 import webbrowser
 import scraper
-from scraper import data
+from main import data
 import funcs
+
 
 class Interface(tk.Tk):
     def __init__(self):
@@ -87,7 +89,7 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         frm_save = tk.Frame(self)
         frm_save.grid(row=1, column=0, padx=(10,0), pady=10, sticky='s')
 
-        self.btn_save = ttk.Button(frm_save, text='Altfragen speichern', command=funcs.placeholder)
+        self.btn_save = ttk.Button(frm_save, text='Altfragen speichern', command=self.on_btn_save)
         self.btn_save.grid(row=1, column=0, sticky='ew')
         
         self.lbl_save_text = tk.StringVar(frm_save, save_text)
@@ -239,7 +241,7 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
     def on_driver_crash(self):
         """When selenium throws up an error, quit selenium and ask user whether to continue on Selenium or open in normal browser. 
         If user chooses normal browser, the exact URL of the exam will be opened."""
-        self.log_traceback()
+        self.log(format_exc)
         self.driver.quit()
         self.btn_browser_text.set(self.STR_OPEN_BROWSER)
 
@@ -275,14 +277,39 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         """Checks whether there are questions in data and enables the 'Altfragen Speichern' button if so"""
         if len(data) > 1:
             self.btn_save['state'] = 'normal'
+            self.lbl_save_text['text'] = ''
         else:
             self.after(1000, self.data_listener)
         return
 
     
     def has_finished(self):
+        """Informs the user of what to do now that they've finished the exam"""
         self.status('Bereit zu speichern!')
 
         self.log(funcs.return_breakline(self.logbox.winfo_width()))
         self.log('Nun gerne auf "Altfragen Speichern" klicken; den Browser kannst du ohne Gefahr schließen!', mark='end_of_questions')
         return
+
+    
+    def on_btn_save(self):
+        file_types = (
+            ("Text Datei","*.txt"),
+            ("Office 365","*.docx*"), 
+            ('Word', "*.doc")
+        )
+
+        file = filedialog.asksaveasfile(mode='w', title="Altfragen speichern", filetypes=file_types, defaultextension=file_types)
+        extension = file.name[-4:]
+        
+        try:
+            if extension == '.txt':
+                file.write(funcs.get_data_str(data))
+                file.close()
+            elif extension in ('.docx', '.doc'):
+                funcs.save_to_doc(file)
+            
+            self.log("Altfragen gespeichert unter:", file.name)
+        except Exception as err:
+            self.log(format_exc)
+            messagebox.showerror(title="Fehler", message="Konnte Datei nicht speichern: " + str(err))
