@@ -6,6 +6,7 @@ TODO: Create custom configuration for how answered/unanswered questions should b
 """
 
 import logging
+from pathlib import Path
 from traceback import format_exc
 from threading import Thread
 from itertools import cycle
@@ -16,7 +17,7 @@ from tkinter import messagebox
 from selenium.common.exceptions import WebDriverException
 import webbrowser
 import scraper
-from main import data
+from _data import data
 import funcs
 
 
@@ -27,6 +28,7 @@ class Interface(tk.Tk):
         # Attributes
         self.exam_url = 'https://moodle.univie.ac.at/'
         self.tries_scraper_restart = 0
+        self.has_finished = False
 
         self.STR_CLOSE_BROWSER = 'Browser schließen'  # For self.btn_browser_text; their exact states are checked for logic,
         self.STR_OPEN_BROWSER = 'Browser öffnen'      # hence why they're assigned as a literals here.
@@ -150,8 +152,10 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         return
 
 
-    def log(self, string):
-        """Sends a string to self.txt_log; important to note: self.print_data() will overwrite what's in log every time it's run"""
+    def log(self, *args):
+        """Works the same as print() except prints to logbox"""
+        string = ' '.join(args)
+
         self.logbox['state'] = 'normal'
         self.logbox.insert(tk.END, funcs.return_breakline(self.logbox.winfo_width()) + string)
         self.logbox.yview_moveto(5000.0)  # 'end' doesn't work here for some reason, so I just went for a really high number.
@@ -190,24 +194,25 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
 
         elif self.btn_browser_text.get() == self.STR_CLOSE_BROWSER:
             self.driver.quit()
+            self.tries_scraper_restart = 0
             self.btn_browser_text.set(self.STR_OPEN_BROWSER)
         return
 
 
     def selenium_run(self):
         """Starts driver in thread so as to ensure responsiveness of Interface"""
-        threadObj = Thread(target=self._selenium_start)
+        threadObj = Thread(target=self._selenium_run)
         threadObj.start()
         return
 
-    def _selenium_start(self):
+    def _selenium_run(self):
         """Tries to start selenium"""
         try:
             self.status('Startet...')
             self.driver = scraper.get_selenium(self.choice_browser.get())
             self._scraper_run()
         except:
-            self.log(format_exc)  # PLACEHOLDER
+            self.log(format_exc())  # PLACEHOLDER
         return
 
     def _scraper_run(self):
@@ -220,12 +225,13 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         try:
             scraper.scrape(self.driver, self)
         except:
+            logging.error(format_exc())
             if not self.driver_is_alive():
                 self.status("Keine Rückmeldung")
                 self.on_driver_crash()
             elif self.tries_scraper_restart <= 3:
                 self.tries_scraper_restart += 1
-                self._scraper_run()
+                self.after(500, self._scraper_run)
             else:
                 self.on_fatal_scraper_error()
         return
@@ -241,8 +247,9 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
     def on_driver_crash(self):
         """When selenium throws up an error, quit selenium and ask user whether to continue on Selenium or open in normal browser. 
         If user chooses normal browser, the exact URL of the exam will be opened."""
-        self.log(format_exc)
+        self.log(format_exc())
         self.driver.quit()
+        self.tries_scraper_restart = 0
         self.btn_browser_text.set(self.STR_OPEN_BROWSER)
 
         return_val = messagebox.askyesnocancel(title="Browser Abgestürzt", message=(
@@ -260,7 +267,7 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
     def on_fatal_scraper_error(self):
         """When selenium throws up an error, quit selenium and ask user whether to continue on Selenium or open in normal browser. 
         If user chooses normal browser, the exact URL of the exam will be opened."""
-        logging.fatal(format_exc)
+        logging.error(format_exc())
 
         return_val = messagebox.askyesnocancel(title="Unerwarteter Fehler", message=(
             "Im Browser ist ein unerwarteter Fehler aufgetreten. Es könnte sein, dass Altfragen nicht mehr richtig gesammelt werden.\n"
@@ -283,12 +290,13 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         return
 
     
-    def has_finished(self):
+    def on_finish(self):
         """Informs the user of what to do now that they've finished the exam"""
+        self.has_finished = True
         self.status('Bereit zu speichern!')
 
         self.log(funcs.return_breakline(self.logbox.winfo_width()))
-        self.log('Nun gerne auf "Altfragen Speichern" klicken; den Browser kannst du ohne Gefahr schließen!', mark='end_of_questions')
+        self.log('Nun gerne auf "Altfragen Speichern" klicken; den Browser kannst du ohne Gefahr schließen!')
         return
 
     
@@ -300,16 +308,17 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         )
 
         file = filedialog.asksaveasfile(mode='w', title="Altfragen speichern", filetypes=file_types, defaultextension=file_types)
-        extension = file.name[-4:]
-        
+        extension = Path(file.name).suffix
+
         try:
             if extension == '.txt':
                 file.write(funcs.get_data_str(data))
                 file.close()
             elif extension in ('.docx', '.doc'):
                 funcs.save_to_doc(file)
-            
+
             self.log("Altfragen gespeichert unter:", file.name)
+
         except Exception as err:
-            self.log(format_exc)
+            self.log(format_exc())
             messagebox.showerror(title="Fehler", message="Konnte Datei nicht speichern: " + str(err))

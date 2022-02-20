@@ -1,4 +1,8 @@
 import logging
+from io import TextIOWrapper
+import os
+import docx
+from _data import data
 
 def return_breakline(width):
     """Returns a line of ------- corresponding to the width of the logbox in order to visually break text apart"""
@@ -32,3 +36,44 @@ def get_data_str(data, format_is_selected="{}.*{}", format_not_selected="{}. {}"
         string += '\n'
     
     return string[:-2]  # Remove last \n
+
+
+def save_to_doc(file: TextIOWrapper, selected_answers_star=False, selected_answers_bold=True):
+    """
+    Saves all question to a doc.
+    Does so by 
+    """
+    # Close file since docx needs metadata out of docx files to read them in.
+    path = file.name
+    file.close()
+
+    doc = docx.Document()
+    
+    ALPHABET = 'abcdefghijklmnopqrstuvwxyz'
+    for i_question, id in enumerate(data['question_order']):
+        question = data[id]
+        paragraph = doc.add_paragraph()
+        
+        # Add question and underline it
+        run = paragraph.add_run(text=f"{i_question + 1}. {question['question']}\n")
+        run.underline = True
+
+        for i_answer, answer in enumerate(question['answers']):
+            letter = ALPHABET[i_answer]
+            
+            if selected_answers_star and question['is_selected'][i_answer]:
+                star_char = '*'
+            else:
+                star_char = ' '
+            
+            if selected_answers_bold:
+                # Creates a run just for the answer letter, then turns it bold
+                run = paragraph.add_run(text=letter + '.' + star_char)
+                run.bold = True
+
+                # Handles the rest of the answer
+                paragraph.add_run(text=answer+'\n')
+            else:
+                paragraph.add_run(text=f"{letter}.{star_char} {answer}\n")
+
+    doc.save(path)

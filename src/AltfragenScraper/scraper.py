@@ -6,9 +6,7 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.common.exceptions import StaleElementReferenceException
 from subprocess import CREATE_NO_WINDOW
-data = {
-    'question_order': []
-}
+from _data import data
 
 def get_selenium(browser: str):
     """Starts Selenium without console window"""
@@ -34,20 +32,21 @@ def scrape(driver: webdriver.Firefox, inter, data=data):
     QUIZ_URL = '/mod/quiz/attempt'
     SUMMARY_URL = '/mod/quiz/summary'
 
-    driver.get(inter.exam_url)
+    if not inter.tries_scraper_restart:  # This portion of code runs only at first startup
+        driver.get(inter.exam_url)
 
-    # Wait until exam page has been reached
-    inter.status('Warte auf Login...')
-    while LOGIN_URL in driver.current_url:
-        time.sleep(0.5)
+        # Wait until exam page has been reached
+        inter.status('Warte auf Login...')
+        while LOGIN_URL in driver.current_url:
+            time.sleep(0.5)
 
-    inter.status('Warte auf Prüfung...')
-    while QUIZ_URL not in driver.current_url:
-        time.sleep(0.5)
+        inter.status('Warte auf Prüfung...')
+        while QUIZ_URL not in driver.current_url:
+            time.sleep(0.5)
 
-    # Exam has been reached
-    inter.exam_url = driver.current_url
-    inter.status('Sammle Altfragen...')
+        # Exam has been reached
+        inter.exam_url = driver.current_url
+        inter.status('Sammle Altfragen...')
 
     while True:
         time.sleep(0.25)
@@ -71,8 +70,8 @@ def scrape(driver: webdriver.Firefox, inter, data=data):
                 inter.print_data()
 
         # Checks if user has finished exam
-        if SUMMARY_URL in driver.current_url:
-            inter.finished()
+        if SUMMARY_URL in driver.current_url and inter.has_finished is False:
+            inter.on_finish()
 
 
 def return_questions(driver: webdriver.Firefox):
