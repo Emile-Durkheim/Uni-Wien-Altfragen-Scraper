@@ -227,8 +227,7 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         except:
             logging.error(format_exc())
             if not self.driver_is_alive():
-                self.status("Keine Rückmeldung")
-                self.on_driver_crash()
+                self.status("Keine Rückmeldung")  # Practically always triggered by user exiting out
             elif self.tries_scraper_restart <= 3:
                 self.tries_scraper_restart += 1
                 self.after(500, self._scraper_run)
@@ -244,25 +243,6 @@ Introductory Paragraph 3"""  # Shown in logbox at startup
         except:
             return False
 
-    def on_driver_crash(self):
-        """When selenium throws up an error, quit selenium and ask user whether to continue on Selenium or open in normal browser. 
-        If user chooses normal browser, the exact URL of the exam will be opened."""
-        self.log(format_exc())
-        self.driver.quit()
-        self.tries_scraper_restart = 0
-        self.btn_browser_text.set(self.STR_OPEN_BROWSER)
-
-        return_val = messagebox.askyesnocancel(title="Browser Abgestürzt", message=(
-            "Keine Panik, alle Antworten sind auf Moodle gespeichert!\n\n"
-            "Möchtest du's nochmal mit dem AltfragenScraper probieren?\n"
-            "(Wenn du auf 'Nein' klickst, wird dein Standardbrowser gestartet)")
-        )
-
-        if return_val is True:
-            self.selenium_run()
-        elif return_val is False:
-            webbrowser.open(self.exam_url)
-        return
     
     def on_fatal_scraper_error(self):
         """When selenium throws up an error, quit selenium and ask user whether to continue on Selenium or open in normal browser. 
