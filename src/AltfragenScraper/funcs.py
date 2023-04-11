@@ -39,11 +39,8 @@ def get_data_str(data, format_is_selected="{}.*{}", format_not_selected="{}. {}"
 
 
 def save_to_doc(file: TextIOWrapper, selected_answers_star=False, selected_answers_bold=True):
-    """
-    Saves all question to a doc.
-    Does so by 
-    """
-    # Close file since docx needs metadata out of docx files to read them in.
+    """Saves all questions to a .doc file"""
+    # Close given file since docx needs metadata out of docx files to read them in.
     path = file.name
     file.close()
 
