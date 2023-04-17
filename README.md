@@ -2,9 +2,10 @@
 
 ### Requirements:
 
-Python 3 (Microsoft store)
-`pip install selenium` in Kommandozeile
-Ausführen: src/AltfragenScraper/main.py
+- Python 3 (Microsoft store)
+- CTRL+R => cmd => `pip install selenium`
+- Den neuesten GeckoDriver (Firefox, https://github.com/mozilla/geckodriver/releases, geckodriver.exe in %username% Ordner ablegen) oder ChromeDriver (Chrome) herunterladen und installieren.
+- Ausführen: CTRL+R => cmd => py <pfad>/src/AltfragenScraper/main.py
 
 ### Funktionsweise:
 
